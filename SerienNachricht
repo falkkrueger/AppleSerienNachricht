@@ -1,0 +1,138 @@
+property numbersFile : "[Pfad/und/Name/der/Numbers/Datei]"
+property simulationNumber : "[DeineHandynummerfürdieSimulation]"
+
+-- Daten von Benutzer abfragen
+set partyDate to text returned of (display dialog "Bitte geben Sie das Datum der Feier ein:" default answer "")
+set replyDate to text returned of (display dialog "Bitte geben Sie das Datum ein, bis wann die Antwort vorliegen soll:" default answer "")
+
+-- Numbers-Datei öffnen
+tell application "Numbers"
+    activate
+    open numbersFile
+end tell
+
+-- Nachrichten analysieren und zählen
+tell application "Numbers"
+    tell document 1
+        tell active sheet
+            tell table 1
+                -- Spalten "wen" lesen
+                set wens to value of cells of column "wen"
+            end tell
+        end tell
+    end tell
+end tell
+
+set totalMessages to 0
+set dichCount to 0
+set euchCount to 0
+set sieCount to 0
+
+repeat with i from 2 to (count wens)
+    set wen to item i of wens
+    if wen is not missing value and wen is not "" then
+        set totalMessages to totalMessages + 1
+        if wen is "Dich" then
+            set dichCount to dichCount + 1
+        else if wen is "Euch" then
+            set euchCount to euchCount + 1
+        else if wen is "Sie" then
+            set sieCount to sieCount + 1
+        end if
+    end if
+end repeat
+
+-- Vorabmeldung mit Anzahl der Nachrichten
+set preMessage to "Es werden " & totalMessages & " Nachrichten generiert:" & linefeed & "Dich: " & dichCount & linefeed & "Euch: " & euchCount & linefeed & "Sie: " & sieCount
+set preResponse to display dialog preMessage buttons {"Abbrechen", "Fortfahren"} default button "Fortfahren"
+if button returned of preResponse is "Abbrechen" then return
+
+-- Nachrichten senden, simulieren oder überspringen
+tell application "Numbers"
+    tell document 1
+        tell active sheet
+            tell table 1
+                -- Spalten "Anrede", "Mobilfunknummer", "wen", "URL", "simuliert", und "gesendet" lesen
+                set anreden to value of cells of column "Anrede"
+                set nummern to value of cells of column "Mobilfunknummer"
+                set wens to value of cells of column "wen"
+                set urlLinks to value of cells of column "URL"
+                set simulatedValues to value of cells of column "simuliert"
+                set sentValues to value of cells of column "gesendet"
+            end tell
+        end tell
+    end tell
+end tell
+
+repeat with i from 2 to (count anreden)
+    set anrede to item i of anreden
+    set nummer to item i of nummern
+    set wen to item i of wens
+    set urlLink to item i of urlLinks
+    set simulatedValue to item i of simulatedValues
+    set sentValue to item i of sentValues
+
+    if simulatedValue is missing value then set simulatedValue to 0
+    if sentValue is missing value then set sentValue to 0
+
+    -- Überprüfen, ob "Mobilfunknummer" und "wen" vorhanden sind
+    if nummer is not missing value and nummer is not "" and wen is not missing value and wen is not "" then
+        -- Text aus der entsprechenden Datei lesen
+        set textPath to "[Pfad/zur/Textdatei]/Einladungstext_" & wen & ".txt"
+        set messageText to do shell script "cat " & quoted form of textPath
+
+        set messageText to my replaceText("[Anrede]", anrede, messageText)
+        set messageText to my replaceText("[URL]", urlLink, messageText)
+        set messageText to my replaceText("*Datum der Feier*", partyDate, messageText) -- Datum der Feier ersetzen
+        set messageText to my replaceText("*bis*", replyDate, messageText) -- Antwortdatum ersetzen
+
+        -- Dialog zum Bearbeiten, Simulieren, Überspringen oder Senden
+        set dialogMessage to "Nachricht an " & nummer & " (Simuliert: " & simulatedValue & ", Gesendet: " & sentValue & "):"
+        set response to display dialog dialogMessage default answer messageText buttons {"Simulieren", "Überspringen", "Senden"} default button "Senden"
+        set editedMessage to text returned of response
+        set buttonChoice to button returned of response
+
+        if buttonChoice = "Simulieren" then
+            tell application "Messages"
+                set targetService to 1st service whose service type = iMessage
+                set targetBuddy to buddy simulationNumber of targetService
+                send editedMessage to targetBuddy
+            end tell
+            tell application "Numbers"
+                tell document 1
+                    tell active sheet
+                        tell table 1
+                            set value of cell i of column "simuliert" to (simulatedValue + 1)
+                        end tell
+                    end tell
+                end tell
+            end tell
+        else if buttonChoice = "Senden" then
+            tell application "Messages"
+                set targetService to 1st service whose service type = iMessage
+                set targetBuddy to buddy nummer of targetService
+                send editedMessage to targetBuddy
+            end tell
+            tell application "Numbers"
+                tell document 1
+                    tell active sheet
+                        tell table 1
+                            set value of cell i of column "gesendet" to (sentValue + 1)
+                        end tell
+                    end tell
+                end tell
+            end tell
+        end if
+    end if
+end repeat
+
+-- Hilfsfunktion zum Ersetzen von Text
+on replaceText(find, replace, textString)
+    set prevTIDs to text item delimiters of AppleScript
+    set text item delimiters of AppleScript to find
+    set textItems to text items of textString
+    set text item delimiters of AppleScript to replace
+    set textString to textItems as text
+    set text item delimiters of AppleScript to prevTIDs
+    return textString
+end replaceText
